@@ -1,0 +1,9 @@
+data_df: '' # Path to data csv
+
+# Classes
+nc: 10  # number of classes
+names: []  # class names
+
+
+# Download script/URL (optional)
+download: None
