@@ -49,9 +49,9 @@ WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
 
 
 def train_one_fold(train_df, valid_df, hyp, opt, device, callbacks):
-    save_dir, epochs, batch_size, weights, single_cls, data, cfg, resume, noval, nosave, workers, freeze = \
+    save_dir, epochs, batch_size, weights, single_cls, data, cfg, resume, noval,  workers, freeze = \
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.data, opt.cfg, \
-        opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze
+        opt.resume, opt.nosave, opt.workers, opt.freeze
 
     # Directories
     w = save_dir / 'weights'  # weights dir
@@ -334,7 +334,7 @@ def train_one_fold(train_df, valid_df, hyp, opt, device, callbacks):
                                        single_cls=single_cls,
                                        dataloader=val_loader,
                                        save_dir=save_dir,
-                                       plots=False,
+                                       plots=True,
                                        callbacks=callbacks,
                                        compute_loss=compute_loss)
 
@@ -346,7 +346,7 @@ def train_one_fold(train_df, valid_df, hyp, opt, device, callbacks):
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
 
             # Save model
-            if (not nosave) or (final_epoch):  # if save
+            if final_epoch:  # if save
                 ckpt = {'epoch': epoch,
                         'best_fitness': best_fitness,
                         'model': deepcopy(de_parallel(model)).half(),
@@ -430,6 +430,7 @@ def parse_opt(known=False):
     parser.add_argument('--freeze', nargs='+', type=int, default=[0], help='Freeze layers: backbone=10, first3=0 1 2')
     parser.add_argument('--save-period', type=int, default=-1, help='Save checkpoint every x epochs (disabled if < 1)')
     parser.add_argument('--local_rank', type=int, default=-1, help='DDP parameter, do not modify')
+    parser.add_argument('--run-folds', type=int, default=-1)
 
     # Weights & Biases arguments
     parser.add_argument('--entity', default=None, help='W&B: Entity')
@@ -460,9 +461,6 @@ def main(opt, callbacks=Callbacks()):
         opt.data, opt.cfg, opt.hyp, opt.weights, opt.project = \
             check_file(opt.data), check_yaml(opt.cfg), check_yaml(opt.hyp), str(opt.weights), str(opt.project)  # checks
         assert len(opt.cfg) or len(opt.weights), 'either --cfg or --weights must be specified'
-        if opt.evolve:
-            opt.project = str(ROOT / 'runs/evolve')
-            opt.exist_ok, opt.resume = opt.resume, False  # pass resume to exist_ok and disable resume
         opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))
 
     # DDP mode
@@ -480,10 +478,11 @@ def main(opt, callbacks=Callbacks()):
         data = yaml.safe_load(f)
     data_df = pd.read_csv(data['data_df'])
 
-    n_fold = 6
-    data_df = make_fold(data_df, n_fold=n_fold, seed=42, stratif='')
+    n_fold = 5
+    data_df['stratif'] = 0
+    data_df = make_fold(data_df, n_fold=n_fold, seed=42, stratif='stratif')
 
-    for fold in range(n_fold):
+    for fold in range(opt.run_folds):
         train_df = data_df.loc[data_df[data_df['fold'] != fold].index].reset_index(drop=True)
         valid_df = data_df.loc[data_df[data_df['fold'] == fold].index].reset_index(drop=True)
         opt.name = opt.name + f'_fold{fold}'
